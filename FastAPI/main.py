@@ -20,15 +20,57 @@ from huggingface_hub import login
 # Library to handle relative and absolute URLs
 from urllib.parse import urljoin
 
+
 # Initialize the FastAPI application to define and manage API routes
 app = FastAPI()
 
+# Cache to store the processed headlines
+headline_cache = {}
+
+# Function to add headlines to the cache
+def add_to_cache(key, data):
+    headline_cache[key] = {
+        "data": data,
+        "timestamp": datetime.now()  # Optional: Track when the data was cached
+    }
+
+# Function to get headlines from the cache
+def get_from_cache(key):
+    return headline_cache.get(key, {}).get("data")
+
+# Function to clear old cache (optional, based on time)
+from datetime import datetime, timedelta
+
+# Function to clear old cache (optional, based on time)
+from datetime import datetime, timedelta
+
+def clear_old_cache(expiry_minutes=30):
+    current_time = datetime.now()
+    keys_to_remove = [
+        key for key, value in headline_cache.items()
+        if current_time - value["timestamp"] > timedelta(minutes=expiry_minutes)
+    ]
+    for key in keys_to_remove:
+        del headline_cache[key]
+
 
 # Load the pre-trained Hugging Face pipeline for sentiment analysis
-# The model distilbert-base-uncased-finetuned-sst-2-english is designed for sentiment analysis in English
-#sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
-#sentiment_pipeline = pipeline("sentiment-analysis", model="cardiffnlp/twitter-roberta-base-sentiment")
-sentiment_pipeline = pipeline("sentiment-analysis", model="yiyanghkust/finbert-tone")
+@app.on_event("startup")
+async def startup_event():
+    load_model()
+
+
+def load_model():
+    global sentiment_pipeline
+
+    # Authenticate with Hugging Face Hub with the token 
+    # Log in using your token (only once, you can skip it if you have already logged in previously)
+    login(token="token")
+
+    # The model distilbert-base-uncased-finetuned-sst-2-english is designed for sentiment analysis in English
+    #sentiment_pipeline = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+    #sentiment_pipeline = pipeline("sentiment-analysis", model="cardiffnlp/twitter-roberta-base-sentiment")
+    sentiment_pipeline = pipeline("sentiment-analysis", model="yiyanghkust/finbert-tone")
 
 ################################################################################################################################
 # Function to perform web scraping
@@ -97,9 +139,6 @@ def remove_duplicates(lst):
 
 # Function to analyze the sentiments of the news_items
 def analyze_sentiments(news_items):
-    # Log in using your token (only once, you can skip it if you have already logged in previously)
-    login(token="<token>")
-
     # Analyzes the sentiments of the titles and associates them with their links
     results = []
 
@@ -110,17 +149,6 @@ def analyze_sentiments(news_items):
         try:
             # Analyze the sentiment of the title
             sentiment = sentiment_pipeline(r['title'])
-
-            # Get the index and the score
-            #sentiment_label_index = sentiment[0]['label']
-            #score = sentiment[0]['score']
-
-            # Map the index to the corresponding label
-            #if sentiment_label_index in label_map:
-            #    sentiment_label = label_map[sentiment_label_index]
-            #else:
-            #    In case it's not in the mapping
-            #    sentiment_label = "Unknown"
 
             # Add the result
             results.append({
@@ -136,7 +164,7 @@ def analyze_sentiments(news_items):
                 "title": r.get('title', 'Unknown'),
                 "link": r.get('link', 'Unknown'),
                 "sentiment": "UNKNOWN",
-                "confidence": 0.0
+                "precision": 0.0
             })
 
     # Sort the results by precision in descending order
@@ -152,6 +180,22 @@ def analyze_sentiments(news_items):
 @app.get("/scrapping_bbc")
 def scrape_bbc_headlines():
     try:
+        
+        # Define a cache key
+        cache_key = "bbc_headlines"
+
+        # Check if data is in the cache
+        cached_data = get_from_cache(cache_key)
+        if cached_data:
+            # Clear the cache (optional, based on time)
+            clear_old_cache()
+
+            return {
+                "result": cached_data,
+                "amount": len(cached_data),
+                "source": "cache"
+            }
+
         # URL and parameters for BBC scraping
         url = "https://bbc.com"
         tag = "a"
@@ -168,10 +212,14 @@ def scrape_bbc_headlines():
         # Perform sentiment analysis
         sentiment_results = analyze_sentiments(unique_news_items)
 
+        # Add the results to the cache
+        add_to_cache(cache_key, sentiment_results)
+        
         # Return the results
         return {
             "result": sentiment_results,
-            "amount": len(sentiment_results)
+            "amount": len(sentiment_results),
+            "source": "scraping"
         }
 
     except Exception as e:
@@ -182,6 +230,22 @@ def scrape_bbc_headlines():
 @app.get("/scrapping_cnn")
 def scrape_cnn_headlines():
     try:
+                
+        # Define a cache key
+        cache_key = "cnn_headlines"
+
+        # Check if data is in the cache
+        cached_data = get_from_cache(cache_key)
+        if cached_data:
+            # Clear the cache (optional, based on time)
+            clear_old_cache()
+
+            return {
+                "result": cached_data,
+                "amount": len(cached_data),
+                "source": "cache"
+            }
+
         # URL and parameters for CNN scraping
         url = "https://cnn.com"
         tag = "a"
@@ -198,10 +262,14 @@ def scrape_cnn_headlines():
         # Perform sentiment analysis
         sentiment_results = analyze_sentiments(unique_news_items)
 
+        # Add the results to the cache
+        add_to_cache(cache_key, sentiment_results)
+
         # Return the results
         return {
             "result": sentiment_results,
-            "amount": len(sentiment_results)
+            "amount": len(sentiment_results),
+            "source": "scraping"
         }
 
     except Exception as e:
@@ -211,6 +279,22 @@ def scrape_cnn_headlines():
 @app.get("/scrapping_nytimes")
 def scrape_nytimes_headlines():
     try:
+        
+        # Define a cache key
+        cache_key = "nytimes_headlines"
+
+        # Check if data is in the cache
+        cached_data = get_from_cache(cache_key)
+        if cached_data:
+            # Clear the cache (optional, based on time)
+            clear_old_cache()
+
+            return {
+                "result": cached_data,
+                "amount": len(cached_data),
+                "source": "cache"
+            }
+
         # URL and parameters for NYTimes scraping
         url_nytimes = "https://www.nytimes.com/international/section/world?page=10"
         
@@ -227,15 +311,24 @@ def scrape_nytimes_headlines():
         # Perform sentiment analysis
         sentiment_results = analyze_sentiments(unique_news_items)
 
+        # Add the results to the cache
+        add_to_cache(cache_key, sentiment_results)
+
         # Return the results
         return {
             "result": sentiment_results,
-            "amount": len(sentiment_results)
+            "amount": len(sentiment_results),
+            "source": "scraping"
         }
 
     except Exception as e:
         return {"error": str(e)}
 
+# Optionally, add an endpoint to clear the cache manually
+@app.get("/clear_cache")
+def clear_cache():
+    headline_cache.clear()
+    return {"message": "Cache cleared"}
 
 # Endpoint for getting the credits from an API
 @app.get("/")
